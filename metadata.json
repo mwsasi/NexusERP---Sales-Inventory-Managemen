@@ -1,0 +1,7 @@
+{
+  "name": "NexusERP - Sales & Inventory Management",
+  "description": "A production-ready ERP Sales application featuring inventory tracking, customer management, automated invoicing, AI-powered sales insights, and comprehensive reporting.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
