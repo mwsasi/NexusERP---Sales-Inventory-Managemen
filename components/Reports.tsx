@@ -1,16 +1,22 @@
 
 import React, { useState, useEffect } from 'react';
 import { Download, Calendar, Filter, FileText, DownloadCloud } from 'lucide-react';
+import { useAuth } from '../App';
 import { dataService } from '../services/dataService';
 import { Sale } from '../types';
 
 const Reports: React.FC = () => {
+  // Fix: Access authentication context to get current company info
+  const { company } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [dateRange, setDateRange] = useState('Today');
 
   useEffect(() => {
-    setSales(dataService.getSales());
-  }, []);
+    // Fix: Pass company.id to getSales (line 12 fix)
+    if (company) {
+      setSales(dataService.getSales(company.id));
+    }
+  }, [company]);
 
   const totalRevenue = sales.reduce((sum, s) => sum + s.total_amount, 0);
   const totalItems = sales.reduce((sum, s) => sum + (s.items?.length || 0), 0);

@@ -1,11 +1,28 @@
 
 export enum UserRole {
   ADMIN = 'Admin',
-  STAFF = 'Staff'
+  STAFF = 'Staff',
+  SUPER_ADMIN = 'SuperAdmin' // For SaaS platform operators
+}
+
+export enum SubscriptionPlan {
+  FREE = 'Free',
+  PRO = 'Pro',
+  ENTERPRISE = 'Enterprise'
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  plan: SubscriptionPlan;
+  stripe_customer_id?: string;
+  logo_url?: string;
+  created_at: string;
 }
 
 export interface User {
   id: string;
+  company_id: string;
   name: string;
   email: string;
   role: UserRole;
@@ -14,6 +31,7 @@ export interface User {
 
 export interface Customer {
   id: string;
+  company_id: string;
   name: string;
   phone: string;
   address: string;
@@ -23,6 +41,7 @@ export interface Customer {
 
 export interface Product {
   id: string;
+  company_id: string;
   name: string;
   sku: string;
   cost_price: number;
@@ -44,6 +63,7 @@ export interface SaleItem {
 
 export interface Sale {
   id: string;
+  company_id: string;
   invoice_number: string;
   customer_id: string;
   customer_name: string;
@@ -54,6 +74,17 @@ export interface Sale {
   discount_amount: number;
   created_at: string;
   items?: SaleItem[];
+}
+
+export interface AuditLog {
+  id: string;
+  company_id: string;
+  user_id: string;
+  user_name: string;
+  action: string;
+  resource: string;
+  details: string;
+  created_at: string;
 }
 
 export interface DashboardStats {

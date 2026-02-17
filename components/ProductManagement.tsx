@@ -1,10 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, Package, Filter, ChevronRight, ChevronLeft } from 'lucide-react';
+import { useAuth } from '../App';
 import { dataService } from '../services/dataService';
 import { Product } from '../types';
 
 const ProductManagement: React.FC = () => {
+  // Fix: Access authentication context to get current company and user info
+  const { company, user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [isModalOpen, setModalOpen] = useState(false);
   const [currentProduct, setCurrentProduct] = useState<Partial<Product>>({
@@ -17,21 +20,27 @@ const ProductManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const loadProducts = () => {
-    setProducts(dataService.getProducts());
+    // Fix: Pass company.id to getProducts (line 20 fix)
+    if (company) {
+      setProducts(dataService.getProducts(company.id));
+    }
   };
 
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [company]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!company || !user) return;
+
     const productToSave = {
       ...currentProduct,
       sku: currentProduct.sku || `SKU-${Math.floor(Math.random() * 900000 + 100000)}`
     } as Product;
     
-    dataService.saveProduct(productToSave);
+    // Fix: Pass companyId, product, userId, and userName to saveProduct (line 34 fix)
+    dataService.saveProduct(company.id, productToSave, user.id, user.name);
     setModalOpen(false);
     loadProducts();
   };
@@ -150,8 +159,9 @@ const ProductManagement: React.FC = () => {
                       </button>
                       <button 
                         onClick={() => {
-                          if (confirm('Delete this product?')) {
-                            dataService.deleteProduct(p.id);
+                          if (confirm('Delete this product?') && company && user) {
+                            // Fix: Pass companyId, id, userId, and userName to deleteProduct (line 154 fix)
+                            dataService.deleteProduct(company.id, p.id, user.id, user.name);
                             loadProducts();
                           }
                         }}

@@ -1,10 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, User, MapPin, Phone, CreditCard, ExternalLink, X, Edit2, Trash2 } from 'lucide-react';
+import { useAuth } from '../App';
 import { dataService } from '../services/dataService';
 import { Customer } from '../types';
 
 const CustomerManagement: React.FC = () => {
+  // Fix: Access authentication context to get current company and user info
+  const { company, user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setModalOpen] = useState(false);
@@ -16,18 +19,22 @@ const CustomerManagement: React.FC = () => {
   });
 
   const loadCustomers = () => {
-    setCustomers(dataService.getCustomers());
+    // Fix: Pass company.id to getCustomers (line 19 fix)
+    if (company) {
+      setCustomers(dataService.getCustomers(company.id));
+    }
   };
 
   useEffect(() => {
     loadCustomers();
-  }, []);
+  }, [company]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentCustomer.name) return;
+    if (!currentCustomer.name || !company || !user) return;
     
-    dataService.saveCustomer(currentCustomer as Customer);
+    // Fix: Pass companyId, customer, userId, and userName to saveCustomer (line 30 fix)
+    dataService.saveCustomer(company.id, currentCustomer as Customer, user.id, user.name);
     setModalOpen(false);
     loadCustomers();
     // Reset form
@@ -36,9 +43,11 @@ const CustomerManagement: React.FC = () => {
 
   const handleDelete = (id: string) => {
     if (window.confirm('Are you sure you want to delete this customer?')) {
-      const allCustomers = dataService.getCustomers();
-      const filtered = allCustomers.filter(c => c.id !== id);
-      localStorage.setItem('erp_customers', JSON.stringify(filtered));
+      if (!company) return;
+      // Fix: Maintain tenant isolation by filtering ALL customers from the correct key 'saas_customers' (line 39 fix)
+      const all: Customer[] = JSON.parse(localStorage.getItem('saas_customers') || '[]');
+      const filtered = all.filter(c => !(c.id === id && c.company_id === company.id));
+      localStorage.setItem('saas_customers', JSON.stringify(filtered));
       loadCustomers();
     }
   };

@@ -1,44 +1,73 @@
 
-import { Product, Customer, Sale, User, UserRole, SaleItem, DashboardStats } from '../types';
+import { Product, Customer, Sale, User, UserRole, SaleItem, DashboardStats, Company, SubscriptionPlan, AuditLog } from '../types';
 
-// Storage Keys
 const KEYS = {
-  PRODUCTS: 'erp_products',
-  CUSTOMERS: 'erp_customers',
-  SALES: 'erp_sales',
-  USERS: 'erp_users',
-  CURRENT_USER: 'erp_auth_user'
+  COMPANIES: 'saas_companies',
+  PRODUCTS: 'saas_products',
+  CUSTOMERS: 'saas_customers',
+  SALES: 'saas_sales',
+  USERS: 'saas_users',
+  AUDIT_LOGS: 'saas_audit_logs',
+  CURRENT_USER: 'saas_auth_user'
 };
-
-const INITIAL_USERS: User[] = [
-  { id: 'u1', name: 'Alex Admin', email: 'admin@nexus.erp', role: UserRole.ADMIN, created_at: new Date().toISOString() }
-];
-
-const INITIAL_PRODUCTS: Product[] = [
-  { id: '1', name: 'Premium Coffee Beans', sku: 'PROD-001', cost_price: 12.00, selling_price: 25.00, stock_quantity: 45, low_stock_threshold: 10, created_at: new Date().toISOString() },
-  { id: '2', name: 'Ceramic Mug Large', sku: 'PROD-002', cost_price: 3.50, selling_price: 12.00, stock_quantity: 4, low_stock_threshold: 5, created_at: new Date().toISOString() },
-  { id: '3', name: 'Grinder Pro v2', sku: 'PROD-003', cost_price: 45.00, selling_price: 89.99, stock_quantity: 12, low_stock_threshold: 2, created_at: new Date().toISOString() }
-];
-
-const INITIAL_CUSTOMERS: Customer[] = [
-  { id: '1', name: 'John Doe', phone: '555-0101', address: '123 Main St, Tech City', credit_balance: 0, created_at: new Date().toISOString() },
-  { id: '2', name: 'Jane Smith', phone: '555-0202', address: '456 Oak Rd, Green Valley', credit_balance: 150.50, created_at: new Date().toISOString() }
-];
 
 export const dataService = {
   init: () => {
-    if (!localStorage.getItem(KEYS.PRODUCTS)) localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
-    if (!localStorage.getItem(KEYS.CUSTOMERS)) localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(INITIAL_CUSTOMERS));
+    if (!localStorage.getItem(KEYS.COMPANIES)) localStorage.setItem(KEYS.COMPANIES, JSON.stringify([]));
+    if (!localStorage.getItem(KEYS.PRODUCTS)) localStorage.setItem(KEYS.PRODUCTS, JSON.stringify([]));
+    if (!localStorage.getItem(KEYS.CUSTOMERS)) localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify([]));
     if (!localStorage.getItem(KEYS.SALES)) localStorage.setItem(KEYS.SALES, JSON.stringify([]));
-    if (!localStorage.getItem(KEYS.USERS)) localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
+    if (!localStorage.getItem(KEYS.USERS)) localStorage.setItem(KEYS.USERS, JSON.stringify([]));
+    if (!localStorage.getItem(KEYS.AUDIT_LOGS)) localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify([]));
+    
+    // Create seed company if none exists
+    const companies = dataService.getCompanies();
+    if (companies.length === 0) {
+      const seedCompany = dataService.createCompany("Nexus Global Corp");
+      dataService.registerUser("System Admin", "admin@nexus.erp", UserRole.ADMIN, seedCompany.id);
+    }
   },
 
-  getUsers: (): User[] => JSON.parse(localStorage.getItem(KEYS.USERS) || '[]'),
+  // Company Operations
+  getCompanies: (): Company[] => JSON.parse(localStorage.getItem(KEYS.COMPANIES) || '[]'),
   
-  registerUser: (name: string, email: string, role: UserRole): User => {
-    const users = dataService.getUsers();
+  getCompany: (id: string): Company | undefined => {
+    return dataService.getCompanies().find(c => c.id === id);
+  },
+
+  createCompany: (name: string): Company => {
+    const companies = dataService.getCompanies();
+    const newCompany: Company = {
+      id: Math.random().toString(36).substr(2, 9),
+      name,
+      plan: SubscriptionPlan.FREE,
+      created_at: new Date().toISOString()
+    };
+    companies.push(newCompany);
+    localStorage.setItem(KEYS.COMPANIES, JSON.stringify(companies));
+    return newCompany;
+  },
+
+  updateCompanyPlan: (companyId: string, plan: SubscriptionPlan) => {
+    const companies = dataService.getCompanies();
+    const idx = companies.findIndex(c => c.id === companyId);
+    if (idx !== -1) {
+      companies[idx].plan = plan;
+      localStorage.setItem(KEYS.COMPANIES, JSON.stringify(companies));
+    }
+  },
+
+  // User Operations
+  getUsers: (companyId?: string): User[] => {
+    const allUsers: User[] = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
+    return companyId ? allUsers.filter(u => u.company_id === companyId) : allUsers;
+  },
+  
+  registerUser: (name: string, email: string, role: UserRole, companyId: string): User => {
+    const users = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
     const newUser: User = {
       id: Math.random().toString(36).substr(2, 9),
+      company_id: companyId,
       name,
       email,
       role,
@@ -49,65 +78,133 @@ export const dataService = {
     return newUser;
   },
 
-  getProducts: (): Product[] => JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]'),
-  saveProduct: (product: Product) => {
-    const products = dataService.getProducts();
-    const index = products.findIndex(p => p.id === product.id);
-    if (index >= 0) products[index] = product;
-    else products.push({ ...product, id: Math.random().toString(36).substr(2, 9), created_at: new Date().toISOString() });
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
-  },
-  deleteProduct: (id: string) => {
-    const products = dataService.getProducts().filter(p => p.id !== id);
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
+  // Tenant Isolated Operations
+  getProducts: (companyId: string): Product[] => {
+    const all: Product[] = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    return all.filter(p => p.company_id === companyId);
   },
 
-  getCustomers: (): Customer[] => JSON.parse(localStorage.getItem(KEYS.CUSTOMERS) || '[]'),
-  saveCustomer: (customer: Customer) => {
-    const customers = dataService.getCustomers();
-    const index = customers.findIndex(c => c.id === customer.id);
-    if (index >= 0) customers[index] = customer;
-    else customers.push({ ...customer, id: Math.random().toString(36).substr(2, 9), created_at: new Date().toISOString() });
-    localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(customers));
+  saveProduct: (companyId: string, product: Product, userId: string, userName: string) => {
+    const all: Product[] = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    const index = all.findIndex(p => p.id === product.id && p.company_id === companyId);
+    
+    if (index >= 0) {
+      all[index] = { ...product, company_id: companyId };
+      dataService.logActivity(companyId, userId, userName, 'UPDATE', 'PRODUCT', `Updated ${product.name}`);
+    } else {
+      const newProd = { 
+        ...product, 
+        id: Math.random().toString(36).substr(2, 9), 
+        company_id: companyId,
+        created_at: new Date().toISOString() 
+      };
+      all.push(newProd);
+      dataService.logActivity(companyId, userId, userName, 'CREATE', 'PRODUCT', `Created ${product.name}`);
+    }
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(all));
   },
 
-  getSales: (): Sale[] => JSON.parse(localStorage.getItem(KEYS.SALES) || '[]'),
-  createSale: (sale: Partial<Sale>, items: Partial<SaleItem>[]) => {
-    const sales = dataService.getSales();
-    const products = dataService.getProducts();
-    const customers = dataService.getCustomers();
+  deleteProduct: (companyId: string, id: string, userId: string, userName: string) => {
+    let all: Product[] = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    const prod = all.find(p => p.id === id && p.company_id === companyId);
+    if (prod) {
+      all = all.filter(p => !(p.id === id && p.company_id === companyId));
+      localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(all));
+      dataService.logActivity(companyId, userId, userName, 'DELETE', 'PRODUCT', `Deleted ${prod.name}`);
+    }
+  },
+
+  getCustomers: (companyId: string): Customer[] => {
+    const all: Customer[] = JSON.parse(localStorage.getItem(KEYS.CUSTOMERS) || '[]');
+    return all.filter(c => c.company_id === companyId);
+  },
+
+  saveCustomer: (companyId: string, customer: Customer, userId: string, userName: string) => {
+    const all: Customer[] = JSON.parse(localStorage.getItem(KEYS.CUSTOMERS) || '[]');
+    const index = all.findIndex(c => c.id === customer.id && c.company_id === companyId);
+    
+    if (index >= 0) {
+      all[index] = { ...customer, company_id: companyId };
+      dataService.logActivity(companyId, userId, userName, 'UPDATE', 'CUSTOMER', `Updated ${customer.name}`);
+    } else {
+      const newCust = { 
+        ...customer, 
+        id: Math.random().toString(36).substr(2, 9), 
+        company_id: companyId,
+        created_at: new Date().toISOString() 
+      };
+      all.push(newCust);
+      dataService.logActivity(companyId, userId, userName, 'CREATE', 'CUSTOMER', `Registered ${customer.name}`);
+    }
+    localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(all));
+  },
+
+  getSales: (companyId: string): Sale[] => {
+    const all: Sale[] = JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+    return all.filter(s => s.company_id === companyId);
+  },
+
+  createSale: (companyId: string, sale: Partial<Sale>, items: Partial<SaleItem>[], userId: string, userName: string) => {
+    const allSales: Sale[] = JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+    const allProducts: Product[] = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    const allCustomers: Customer[] = JSON.parse(localStorage.getItem(KEYS.CUSTOMERS) || '[]');
     
     const newSale: Sale = {
       ...sale,
       id: Math.random().toString(36).substr(2, 9),
+      company_id: companyId,
       invoice_number: `INV-${Date.now().toString().slice(-6)}`,
       created_at: new Date().toISOString(),
       items: items.map(item => ({ ...item, id: Math.random().toString(36).substr(2, 9) } as SaleItem))
     } as Sale;
 
-    // Reduce stock
+    // Deduct stock for company products
     items.forEach(item => {
-      const prod = products.find(p => p.id === item.product_id);
+      const prod = allProducts.find(p => p.id === item.product_id && p.company_id === companyId);
       if (prod) prod.stock_quantity -= (item.quantity || 0);
     });
 
-    // Update customer credit if balance remains
     if (newSale.balance > 0) {
-      const cust = customers.find(c => c.id === newSale.customer_id);
+      const cust = allCustomers.find(c => c.id === newSale.customer_id && c.company_id === companyId);
       if (cust) cust.credit_balance += newSale.balance;
     }
 
-    sales.push(newSale);
-    localStorage.setItem(KEYS.SALES, JSON.stringify(sales));
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
-    localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(customers));
+    allSales.push(newSale);
+    localStorage.setItem(KEYS.SALES, JSON.stringify(allSales));
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(allProducts));
+    localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(allCustomers));
+    
+    dataService.logActivity(companyId, userId, userName, 'CREATE', 'SALE', `New Sale: ${newSale.invoice_number} for $${newSale.total_amount}`);
+    
     return newSale;
   },
 
-  getDashboardStats: (): DashboardStats => {
-    const sales = dataService.getSales();
-    const products = dataService.getProducts();
-    const customers = dataService.getCustomers();
+  logActivity: (companyId: string, userId: string, userName: string, action: string, resource: string, details: string) => {
+    const logs: AuditLog[] = JSON.parse(localStorage.getItem(KEYS.AUDIT_LOGS) || '[]');
+    logs.push({
+      id: Math.random().toString(36).substr(2, 9),
+      company_id: companyId,
+      user_id: userId,
+      user_name: userName,
+      action,
+      resource,
+      details,
+      created_at: new Date().toISOString()
+    });
+    // Keep last 1000 logs
+    const trimmed = logs.slice(-1000);
+    localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify(trimmed));
+  },
+
+  getAuditLogs: (companyId: string): AuditLog[] => {
+    const all: AuditLog[] = JSON.parse(localStorage.getItem(KEYS.AUDIT_LOGS) || '[]');
+    return all.filter(l => l.company_id === companyId).reverse();
+  },
+
+  getDashboardStats: (companyId: string): DashboardStats => {
+    const sales = dataService.getSales(companyId);
+    const products = dataService.getProducts(companyId);
+    const customers = dataService.getCustomers(companyId);
     
     const today = new Date().toISOString().split('T')[0];
     const month = new Date().getMonth();
@@ -121,10 +218,8 @@ export const dataService = {
       .reduce((sum, s) => sum + s.total_amount, 0);
 
     const lowStockItems = products.filter(p => p.stock_quantity <= p.low_stock_threshold);
-    
     const outstandingBalances = customers.reduce((sum, c) => sum + c.credit_balance, 0);
 
-    // Simple revenue chart data for last 7 days
     const last7Days = Array.from({ length: 7 }).map((_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - i);
@@ -141,7 +236,7 @@ export const dataService = {
       totalCustomers: customers.length,
       totalProducts: products.length,
       lowStockItems,
-      topProducts: [], // Would need aggregation logic
+      topProducts: [],
       revenueChart: last7Days,
       outstandingBalances
     };
